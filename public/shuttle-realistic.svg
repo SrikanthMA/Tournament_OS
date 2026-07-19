@@ -1,0 +1,33 @@
+<svg width="900" height="520" viewBox="0 0 900 520" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="featherFill" x1="190" y1="70" x2="560" y2="340" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF" stop-opacity=".98"/><stop offset=".58" stop-color="#E8E9EE" stop-opacity=".90"/><stop offset="1" stop-color="#A8ABB4" stop-opacity=".72"/>
+    </linearGradient>
+    <linearGradient id="corkFill" x1="590" y1="300" x2="710" y2="420" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F6EAD4"/><stop offset=".45" stop-color="#C9AD82"/><stop offset="1" stop-color="#6E5539"/>
+    </linearGradient>
+    <radialGradient id="redGlow"><stop stop-color="#EF4058" stop-opacity=".40"/><stop offset="1" stop-color="#EF4058" stop-opacity="0"/></radialGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="180%" height="180%"><feDropShadow dx="0" dy="24" stdDeviation="18" flood-color="#000" flood-opacity=".72"/></filter>
+    <filter id="soft"><feGaussianBlur stdDeviation="22"/></filter>
+  </defs>
+  <ellipse cx="560" cy="352" rx="255" ry="120" fill="url(#redGlow)" filter="url(#soft)"/>
+  <g transform="rotate(19 470 270)" filter="url(#shadow)">
+    <!-- classic conical feather skirt -->
+    <path d="M150 84L540 270L475 342L112 128Z" fill="url(#featherFill)" fill-opacity=".18" stroke="#FFF" stroke-opacity=".88" stroke-width="3"/>
+    <!-- long feather shafts -->
+    <path d="M151 84L523 282M117 126L485 327M207 64L529 278M268 65L531 279M329 81L529 283M388 105L524 290" stroke="#FAFAFC" stroke-width="7" stroke-linecap="round" opacity=".90"/>
+    <!-- feather webbing -->
+    <path d="M161 91L127 134M206 68L164 156M266 68L210 184M328 84L258 214M388 108L311 245" stroke="#FFF" stroke-opacity=".42" stroke-width="3"/>
+    <path d="M184 103L145 144M235 82L187 167M296 82L238 195M356 98L287 224M414 123L339 253" stroke="#FFF" stroke-opacity=".28" stroke-width="2"/>
+    <!-- binding ring -->
+    <path d="M475 342C499 303 519 279 543 277C570 275 594 296 604 322C614 349 605 372 581 387C553 404 518 393 493 369L475 342Z" fill="#E7E8EC" stroke="#FFF" stroke-opacity=".8" stroke-width="3"/>
+    <path d="M493 352C520 365 558 361 593 334" stroke="#9FA2AA" stroke-width="7" opacity=".8"/>
+    <!-- rounded cork -->
+    <ellipse cx="624" cy="374" rx="75" ry="61" fill="url(#corkFill)" stroke="#F7EBD8" stroke-opacity=".65" stroke-width="3"/>
+    <ellipse cx="643" cy="357" rx="40" ry="30" fill="#FFF" fill-opacity=".15"/>
+    <path d="M571 403C607 427 658 431 690 399" stroke="#5E4631" stroke-opacity=".45" stroke-width="5"/>
+  </g>
+  <path d="M95 420C250 392 361 379 488 359" stroke="#EF4058" stroke-opacity=".5" stroke-width="3" stroke-linecap="round"/>
+  <path d="M160 452C298 422 395 406 510 382" stroke="#EF4058" stroke-opacity=".18" stroke-width="2" stroke-linecap="round"/>
+  <circle cx="512" cy="354" r="4" fill="#FF7184"/>
+</svg>
