@@ -17,7 +17,13 @@ export async function ensureDatabase() {
       id TEXT PRIMARY KEY,
       state JSONB NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      version BIGINT NOT NULL DEFAULT 1
     )
+  `);
+
+  await pool.query(`
+    ALTER TABLE tournament_state
+    ADD COLUMN IF NOT EXISTS version BIGINT NOT NULL DEFAULT 1
   `);
 }

@@ -442,10 +442,15 @@ export default function App() {
   const backendReady = useRef(false);
   const applyingRemoteState = useRef(false);
   const lastServerUpdatedAt = useRef('');
+  const lastServerVersion = useRef(0);
   const saveTimer = useRef<number | null>(null);
+  const skipNextSave = useRef(false);
+  const hasUnsavedChanges = useRef(false);
+  const saveInProgress = useRef(false);
 
   const applyTournamentState = (state: any) => {
     applyingRemoteState.current = true;
+    skipNextSave.current = true;
     if (Array.isArray(state.participants)) setParticipants(state.participants);
     if (Array.isArray(state.brackets)) setBrackets(state.brackets);
     if (Array.isArray(state.leagueStages)) setLeagueStages(state.leagueStages);
@@ -454,7 +459,7 @@ export default function App() {
     if (Array.isArray(state.announcements)) setAnnouncements(state.announcements);
     if (Array.isArray(state.audit)) setAudit(state.audit);
     if (state.settings && typeof state.settings === 'object') setSettings((current: any) => ({ ...current, ...state.settings, eventName: 'Juniors Badminton Tournament 2026', logoUrl: '' }));
-    window.setTimeout(() => { applyingRemoteState.current = false; }, 0);
+    applyingRemoteState.current = false;
   };
 
   useEffect(() => {
@@ -468,15 +473,17 @@ export default function App() {
         if (payload.state) {
           applyTournamentState(payload.state);
           lastServerUpdatedAt.current = payload.updatedAt || '';
+          lastServerVersion.current = Number(payload.version || 0);
         } else {
           const initialState = { participants, brackets, leagueStages, scheduleItems, courts, announcements, audit, settings };
           const createResponse = await fetch(apiUrl('/api/state'), {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ state: initialState }),
+            body: JSON.stringify({ state: initialState, baseVersion: 0 }),
           });
           const created = await createResponse.json();
           lastServerUpdatedAt.current = created.updatedAt || '';
+          lastServerVersion.current = Number(created.version || 1);
         }
         backendReady.current = true;
       } catch (error) {
@@ -489,34 +496,73 @@ export default function App() {
 
   useEffect(() => {
     if (!backendReady.current || applyingRemoteState.current) return;
+    if (skipNextSave.current) {
+      skipNextSave.current = false;
+      hasUnsavedChanges.current = false;
+      return;
+    }
+
+    hasUnsavedChanges.current = true;
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(async () => {
+      saveTimer.current = null;
+      saveInProgress.current = true;
       try {
         const response = await fetch(apiUrl('/api/state'), {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ state: { participants, brackets, leagueStages, scheduleItems, courts, announcements, audit, settings } }),
+          body: JSON.stringify({
+            state: { participants, brackets, leagueStages, scheduleItems, courts, announcements, audit, settings },
+            baseVersion: lastServerVersion.current,
+          }),
         });
+
+        if (response.status === 409) {
+          const conflict = await response.json();
+          lastServerUpdatedAt.current = conflict.updatedAt || lastServerUpdatedAt.current;
+          lastServerVersion.current = Number(conflict.version || lastServerVersion.current);
+          applyTournamentState(conflict.state);
+          hasUnsavedChanges.current = false;
+          window.alert('This tournament was changed in another window. The latest saved version has been loaded. Please repeat your last action.');
+          return;
+        }
+
         if (response.ok) {
           const payload = await response.json();
           lastServerUpdatedAt.current = payload.updatedAt || lastServerUpdatedAt.current;
+          lastServerVersion.current = Number(payload.version || lastServerVersion.current);
+          hasUnsavedChanges.current = false;
         }
       } catch (error) {
         console.warn('Could not save shared tournament state.', error);
+      } finally {
+        saveInProgress.current = false;
       }
-    }, 350);
-    return () => { if (saveTimer.current) window.clearTimeout(saveTimer.current); };
+    }, 500);
+    return () => {
+      if (saveTimer.current) {
+        window.clearTimeout(saveTimer.current);
+        saveTimer.current = null;
+      }
+    };
   }, [participants, brackets, leagueStages, scheduleItems, courts, announcements, audit, settings]);
 
   useEffect(() => {
     const poll = window.setInterval(async () => {
-      if (!backendReady.current || applyingRemoteState.current) return;
+      if (
+        !backendReady.current ||
+        applyingRemoteState.current ||
+        hasUnsavedChanges.current ||
+        saveInProgress.current ||
+        saveTimer.current !== null
+      ) return;
       try {
         const response = await fetch(apiUrl('/api/state'));
         if (!response.ok) return;
         const payload = await response.json();
         if (payload.state && payload.updatedAt && payload.updatedAt !== lastServerUpdatedAt.current) {
           lastServerUpdatedAt.current = payload.updatedAt;
+          lastServerVersion.current = Number(payload.version || lastServerVersion.current);
           applyTournamentState(payload.state);
         }
       } catch {
