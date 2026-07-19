@@ -1,4 +1,5 @@
 import { FormEvent, TouchEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { io } from 'socket.io-client';
 import {
   Activity, Bell, CalendarDays, CheckCircle2, Clock3, Crown, LayoutDashboard,
   ListChecks, LogIn, Minus, Plus, Search, ShieldCheck, Swords, Trophy, UserCheck,
@@ -7,6 +8,10 @@ import {
 
 type Role = 'Viewer' | 'Super Admin' | 'Registration Admin' | 'Court 1 Umpire' | 'Court 2 Umpire';
 type StaffRole = Exclude<Role, 'Viewer'>;
+
+const socket = io(import.meta.env.VITE_SOCKET_URL || 'http://localhost:4000', {
+  transports: ['websocket', 'polling'],
+});
 
 const STAFF_CREDENTIALS: Record<StaffRole, { username: string; password: string }> = {
   'Super Admin': { username: 'superadmin', password: 'JP@2026' },
@@ -432,25 +437,17 @@ export default function App() {
   const [audit, setAudit] = useState<AuditEntry[]>(demoAudit);
   const [announcementText, setAnnouncementText] = useState('');
   const [announcementPriority, setAnnouncementPriority] = useState<Announcement['priority']>('Normal');
-  const [settings, setSettings] = useState({ eventName: 'Juniors Badminton Tournament 2026', venue: 'Bengaluru', restMinutes: 15, scoringCap: 21, logoUrl: '' });
-
-  const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || '').replace(/\/$/, '');
-  const apiUrl = (path: string) => `${apiBaseUrl}${path}`;
+  const [settings, setSettings] = useState({ eventName: 'Juniors Championship 2026', venue: 'Bengaluru', restMinutes: 15, scoringCap: 21, logoUrl: '' });
 
   useEffect(() => { const id = window.setInterval(() => setNow(new Date()), 1000); return () => window.clearInterval(id); }, []);
   useEffect(() => { const id = window.setTimeout(() => setShowIntro(false), 5600); return () => window.clearTimeout(id); }, []);
   const backendReady = useRef(false);
   const applyingRemoteState = useRef(false);
   const lastServerUpdatedAt = useRef('');
-  const lastServerVersion = useRef(0);
   const saveTimer = useRef<number | null>(null);
-  const skipNextSave = useRef(false);
-  const hasUnsavedChanges = useRef(false);
-  const saveInProgress = useRef(false);
 
   const applyTournamentState = (state: any) => {
     applyingRemoteState.current = true;
-    skipNextSave.current = true;
     if (Array.isArray(state.participants)) setParticipants(state.participants);
     if (Array.isArray(state.brackets)) setBrackets(state.brackets);
     if (Array.isArray(state.leagueStages)) setLeagueStages(state.leagueStages);
@@ -458,32 +455,30 @@ export default function App() {
     if (Array.isArray(state.courts)) setCourts(state.courts);
     if (Array.isArray(state.announcements)) setAnnouncements(state.announcements);
     if (Array.isArray(state.audit)) setAudit(state.audit);
-    if (state.settings && typeof state.settings === 'object') setSettings((current: any) => ({ ...current, ...state.settings, eventName: 'Juniors Badminton Tournament 2026', logoUrl: '' }));
-    applyingRemoteState.current = false;
+    if (state.settings && typeof state.settings === 'object') setSettings((current: any) => ({ ...current, ...state.settings, logoUrl: '' }));
+    window.setTimeout(() => { applyingRemoteState.current = false; }, 0);
   };
 
   useEffect(() => {
     let cancelled = false;
     const loadSharedState = async () => {
       try {
-        const response = await fetch(apiUrl('/api/state'));
+        const response = await fetch('/api/state');
         if (!response.ok) throw new Error('Unable to load shared state');
         const payload = await response.json();
         if (cancelled) return;
         if (payload.state) {
           applyTournamentState(payload.state);
           lastServerUpdatedAt.current = payload.updatedAt || '';
-          lastServerVersion.current = Number(payload.version || 0);
         } else {
           const initialState = { participants, brackets, leagueStages, scheduleItems, courts, announcements, audit, settings };
-          const createResponse = await fetch(apiUrl('/api/state'), {
+          const createResponse = await fetch('/api/state', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ state: initialState, baseVersion: 0 }),
+            body: JSON.stringify({ state: initialState }),
           });
           const created = await createResponse.json();
           lastServerUpdatedAt.current = created.updatedAt || '';
-          lastServerVersion.current = Number(created.version || 1);
         }
         backendReady.current = true;
       } catch (error) {
@@ -496,80 +491,62 @@ export default function App() {
 
   useEffect(() => {
     if (!backendReady.current || applyingRemoteState.current) return;
-    if (skipNextSave.current) {
-      skipNextSave.current = false;
-      hasUnsavedChanges.current = false;
-      return;
-    }
-
-    hasUnsavedChanges.current = true;
     if (saveTimer.current) window.clearTimeout(saveTimer.current);
     saveTimer.current = window.setTimeout(async () => {
-      saveTimer.current = null;
-      saveInProgress.current = true;
       try {
-        const response = await fetch(apiUrl('/api/state'), {
+        const response = await fetch('/api/state', {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            state: { participants, brackets, leagueStages, scheduleItems, courts, announcements, audit, settings },
-            baseVersion: lastServerVersion.current,
-          }),
+          body: JSON.stringify({ state: { participants, brackets, leagueStages, scheduleItems, courts, announcements, audit, settings } }),
         });
-
-        if (response.status === 409) {
-          const conflict = await response.json();
-          lastServerUpdatedAt.current = conflict.updatedAt || lastServerUpdatedAt.current;
-          lastServerVersion.current = Number(conflict.version || lastServerVersion.current);
-          applyTournamentState(conflict.state);
-          hasUnsavedChanges.current = false;
-          window.alert('This tournament was changed in another window. The latest saved version has been loaded. Please repeat your last action.');
-          return;
-        }
-
         if (response.ok) {
           const payload = await response.json();
           lastServerUpdatedAt.current = payload.updatedAt || lastServerUpdatedAt.current;
-          lastServerVersion.current = Number(payload.version || lastServerVersion.current);
-          hasUnsavedChanges.current = false;
         }
       } catch (error) {
         console.warn('Could not save shared tournament state.', error);
-      } finally {
-        saveInProgress.current = false;
       }
-    }, 500);
-    return () => {
-      if (saveTimer.current) {
-        window.clearTimeout(saveTimer.current);
-        saveTimer.current = null;
-      }
-    };
+    }, 350);
+    return () => { if (saveTimer.current) window.clearTimeout(saveTimer.current); };
   }, [participants, brackets, leagueStages, scheduleItems, courts, announcements, audit, settings]);
 
   useEffect(() => {
-    const poll = window.setInterval(async () => {
-      if (
-        !backendReady.current ||
-        applyingRemoteState.current ||
-        hasUnsavedChanges.current ||
-        saveInProgress.current ||
-        saveTimer.current !== null
-      ) return;
+    const handleConnect = () => {
+      console.log('Socket.IO connected:', socket.id);
+    };
+
+    const handleStateUpdated = async (event?: { updatedAt?: string }) => {
+      if (!backendReady.current || applyingRemoteState.current) return;
+      if (event?.updatedAt && event.updatedAt === lastServerUpdatedAt.current) return;
+
       try {
-        const response = await fetch(apiUrl('/api/state'));
-        if (!response.ok) return;
+        const response = await fetch('/api/state');
+        if (!response.ok) throw new Error('Unable to load the latest tournament state');
+
         const payload = await response.json();
-        if (payload.state && payload.updatedAt && payload.updatedAt !== lastServerUpdatedAt.current) {
-          lastServerUpdatedAt.current = payload.updatedAt;
-          lastServerVersion.current = Number(payload.version || lastServerVersion.current);
-          applyTournamentState(payload.state);
-        }
-      } catch {
-        // The next poll will retry automatically.
+        if (!payload.state) return;
+        if (payload.updatedAt && payload.updatedAt === lastServerUpdatedAt.current) return;
+
+        lastServerUpdatedAt.current = payload.updatedAt || '';
+        applyTournamentState(payload.state);
+      } catch (error) {
+        console.warn('Could not apply the real-time tournament update.', error);
       }
-    }, 2500);
-    return () => window.clearInterval(poll);
+    };
+
+    const handleConnectError = (error: Error) => {
+      console.warn('Socket.IO connection error:', error.message);
+    };
+
+    socket.on('connect', handleConnect);
+    socket.on('state-updated', handleStateUpdated);
+    socket.on('connect_error', handleConnectError);
+
+    return () => {
+      socket.off('connect', handleConnect);
+      socket.off('state-updated', handleStateUpdated);
+      socket.off('connect_error', handleConnectError);
+    };
   }, []);
 
   const editableCourts = useMemo(() => role === 'Court 1 Umpire' ? [1] : role === 'Court 2 Umpire' ? [2] : role === 'Super Admin' ? [1, 2] : [], [role]);
@@ -894,16 +871,14 @@ export default function App() {
       <div className="intro-court" aria-hidden="true">
         <span className="court-outline"/><span className="court-midline"/><span className="court-left-service"/><span className="court-right-service"/>
       </div>
-      <div className="intro-shuttle" aria-hidden="true">
-        <span className="shuttle-feathers"><i /><i /><i /><i /></span>
-        <span className="shuttle-skirt" />
-        <span className="shuttle-cork" />
+      <div className="intro-shuttle intro-shuttle-live" aria-hidden="true">
         <span className="shuttle-trail" />
+        <img src="/shuttle-live.png" alt="" />
         <span className="shuttle-impact" />
       </div>
       <div className="intro-center">
         <div className="intro-mark"><img src={settings.logoUrl || '/jp-emblem-safe.png'} alt="JP Badminton Events" /></div>
-        <div className="intro-copy"><span>JP BADMINTON EVENTS</span><strong>{settings.eventName}</strong><small>Bengaluru · August 8–9</small></div>
+        <div className="intro-copy"><span>JP BADMINTON EVENTS</span><strong>Juniors Championship 2026</strong><small>Bengaluru · August 8–9</small></div>
       </div>
       <div className="intro-categories" aria-hidden="true"><span>U11</span><span>U13</span><span>U15</span><span>U17</span></div>
       <div className="intro-progress" aria-hidden="true"><i/></div>
