@@ -807,30 +807,52 @@ export default function App() {
   }, []);
   const backendReady = useRef(false);
   const applyingRemoteState = useRef(false);
+  const skipNextSave = useRef(false);
   const lastServerUpdatedAt = useRef("");
   const serverVersion = useRef(0);
   const saveTimer = useRef<number | null>(null);
 
   const applyTournamentState = (state: any) => {
     applyingRemoteState.current = true;
-    if (Array.isArray(state.participants)) setParticipants(state.participants);
-    if (Array.isArray(state.brackets)) setBrackets(state.brackets);
-    if (Array.isArray(state.leagueStages)) setLeagueStages(state.leagueStages);
-    if (Array.isArray(state.scheduleItems))
+    skipNextSave.current = true;
+
+    if (Array.isArray(state.participants)) {
+      setParticipants(state.participants);
+    }
+
+    if (Array.isArray(state.brackets)) {
+      setBrackets(state.brackets);
+    }
+
+    if (Array.isArray(state.leagueStages)) {
+      setLeagueStages(state.leagueStages);
+    }
+
+    if (Array.isArray(state.scheduleItems)) {
       setScheduleItems(state.scheduleItems);
-    if (Array.isArray(state.courts)) setCourts(state.courts);
-    if (Array.isArray(state.announcements))
+    }
+
+    if (Array.isArray(state.courts)) {
+      setCourts(state.courts);
+    }
+
+    if (Array.isArray(state.announcements)) {
       setAnnouncements(state.announcements);
-    if (Array.isArray(state.audit)) setAudit(state.audit);
-    if (state.settings && typeof state.settings === "object")
+    }
+
+    if (Array.isArray(state.audit)) {
+      setAudit(state.audit);
+    }
+
+    if (state.settings && typeof state.settings === "object") {
       setSettings((current: any) => ({
         ...current,
         ...state.settings,
         logoUrl: "",
       }));
-    window.setTimeout(() => {
-      applyingRemoteState.current = false;
-    }, 0);
+    }
+
+    applyingRemoteState.current = false;
   };
 
   useEffect(() => {
@@ -906,7 +928,14 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!backendReady.current || applyingRemoteState.current) return;
+    if (!backendReady.current) return;
+
+    if (skipNextSave.current) {
+      skipNextSave.current = false;
+      return;
+    }
+
+    if (applyingRemoteState.current) return;
 
     if (saveTimer.current) {
       window.clearTimeout(saveTimer.current);
