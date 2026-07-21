@@ -812,9 +812,15 @@ export default function App() {
   const serverVersion = useRef(0);
   const saveTimer = useRef<number | null>(null);
 
-  const applyTournamentState = (state: any) => {
+  const applyTournamentState = (
+    state: any,
+    preventSave = true,
+  ) => {
     applyingRemoteState.current = true;
-    skipNextSave.current = true;
+
+    if (preventSave) {
+      skipNextSave.current = true;
+    }
 
     if (Array.isArray(state.participants)) {
       setParticipants(state.participants);
@@ -874,7 +880,7 @@ export default function App() {
         lastServerUpdatedAt.current = payload.updatedAt || "";
 
         if (payload.state) {
-          applyTournamentState(payload.state);
+          applyTournamentState(payload.state, false);
         } else {
           const initialState = {
             participants,
