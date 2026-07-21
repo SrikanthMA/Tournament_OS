@@ -1,7 +1,9 @@
 import 'dotenv/config';
+import { createServer } from 'node:http';
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
+import { Server } from 'socket.io';
 import { z } from 'zod';
 import { ensureDatabase, pool } from './db.js';
 
@@ -20,7 +22,6 @@ app.use(helmet());
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests without an Origin header, such as Render health checks.
       if (!origin) {
         callback(null, true);
         return;
@@ -38,6 +39,24 @@ app.use(
 );
 
 app.use(express.json({ limit: '5mb' }));
+
+const httpServer = createServer(app);
+
+const io = new Server(httpServer, {
+  cors: {
+    origin: allowedOrigins,
+    methods: ['GET', 'POST', 'PUT'],
+    credentials: true,
+  },
+});
+
+io.on('connection', (socket) => {
+  console.log(`Socket.IO connected: ${socket.id}`);
+
+  socket.on('disconnect', () => {
+    console.log(`Socket.IO disconnected: ${socket.id}`);
+  });
+});
 
 app.get('/api/health', async (_req, res, next) => {
   try {
@@ -81,9 +100,6 @@ app.get('/api/state', async (_req, res, next) => {
 
 const stateSchema = z.object({
   state: z.record(z.string(), z.unknown()),
-
-  // Required now. Older tabs that do not send a version
-  // will be rejected instead of overwriting newer data.
   baseVersion: z.number().int().nonnegative(),
 });
 
@@ -103,11 +119,6 @@ app.put('/api/state', async (req, res, next) => {
 
     await client.query('BEGIN');
 
-    /*
-     * Lock the row while checking and updating it.
-     * This prevents two browser windows from passing the version
-     * check at the same time and both overwriting the database.
-     */
     const existing = await client.query(
       `
       SELECT state, updated_at, version
@@ -119,10 +130,6 @@ app.put('/api/state', async (req, res, next) => {
     );
 
     if (existing.rowCount === 0) {
-      /*
-       * A brand-new database should start from baseVersion 0.
-       * Any other value means the browser is working with stale data.
-       */
       if (parsed.data.baseVersion !== 0) {
         await client.query('ROLLBACK');
 
@@ -154,6 +161,13 @@ app.put('/api/state', async (req, res, next) => {
 
       const row = created.rows[0];
 
+      io.emit('state-updated', {
+        updatedAt:
+          row.updated_at?.toISOString?.() ??
+          row.updated_at,
+        version: Number(row.version),
+      });
+
       res.json({
         ok: true,
         updatedAt:
@@ -168,10 +182,6 @@ app.put('/api/state', async (req, res, next) => {
     const current = existing.rows[0];
     const currentVersion = Number(current.version);
 
-    /*
-     * Reject every stale save.
-     * baseVersion is required, so cached older clients cannot bypass this.
-     */
     if (parsed.data.baseVersion !== currentVersion) {
       await client.query('ROLLBACK');
 
@@ -203,6 +213,13 @@ app.put('/api/state', async (req, res, next) => {
     await client.query('COMMIT');
 
     const row = result.rows[0];
+
+    io.emit('state-updated', {
+      updatedAt:
+        row.updated_at?.toISOString?.() ??
+        row.updated_at,
+      version: Number(row.version),
+    });
 
     res.json({
       ok: true,
@@ -247,11 +264,13 @@ app.use(
 
 await ensureDatabase();
 
-const server = app.listen(port, () => {
+const server = httpServer.listen(port, () => {
   console.log(`JP Badminton backend running on port ${port}`);
 });
 
 const shutdown = async () => {
+  io.close();
+
   server.close(async () => {
     await pool.end();
     process.exit(0);
