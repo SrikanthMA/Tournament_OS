@@ -970,14 +970,50 @@ export default function App() {
         });
 
         if (response.status === 409) {
-          const payload = await response.json();
+          const conflict = await response.json();
 
-          serverVersion.current = Number(payload.version ?? 0);
-          lastServerUpdatedAt.current = payload.updatedAt || "";
+          // Another browser saved first. Refresh the version number, then retry
+          // this user's latest local change once instead of discarding it.
+          serverVersion.current = Number(conflict.version ?? 0);
+          lastServerUpdatedAt.current = conflict.updatedAt || "";
 
-          if (payload.state) {
-            applyTournamentState(payload.state);
+          const retryResponse = await fetch(`${API_URL}/api/state`, {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              state: {
+                participants,
+                brackets,
+                leagueStages,
+                scheduleItems,
+                courts,
+                announcements,
+                audit,
+                settings,
+              },
+              baseVersion: serverVersion.current,
+            }),
+          });
+
+          if (!retryResponse.ok) {
+            const retryPayload = await retryResponse.json().catch(() => null);
+            console.warn(
+              "Tournament save retry failed:",
+              retryResponse.status,
+              retryPayload,
+            );
+            return;
           }
+
+          const retryPayload = await retryResponse.json();
+
+          serverVersion.current = Number(
+            retryPayload.version ?? serverVersion.current,
+          );
+          lastServerUpdatedAt.current =
+            retryPayload.updatedAt || lastServerUpdatedAt.current;
 
           return;
         }
