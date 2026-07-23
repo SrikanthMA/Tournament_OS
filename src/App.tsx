@@ -806,6 +806,7 @@ export default function App() {
     return () => window.clearTimeout(id);
   }, []);
   const backendReady = useRef(false);
+  const [backendInitialized, setBackendInitialized] = useState(false);
   const applyingRemoteState = useRef(false);
   const skipNextSave = useRef(false);
   const lastServerUpdatedAt = useRef("");
@@ -880,7 +881,8 @@ export default function App() {
         lastServerUpdatedAt.current = payload.updatedAt || "";
 
         if (payload.state) {
-          applyTournamentState(payload.state, false);
+          // Apply backend data without immediately writing it back.
+          applyTournamentState(payload.state, true);
         } else {
           const initialState = {
             participants,
@@ -900,7 +902,7 @@ export default function App() {
             },
             body: JSON.stringify({
               state: initialState,
-              baseVersion: 0,
+              baseVersion: serverVersion.current,
             }),
           });
 
@@ -918,6 +920,7 @@ export default function App() {
         }
 
         backendReady.current = true;
+        setBackendInitialized(true);
       } catch (error) {
         console.warn(
           "Backend unavailable; continuing with local browser data.",
@@ -934,7 +937,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!backendReady.current) return;
+    if (!backendInitialized || !backendReady.current) return;
+
+    // Never send an update before the initial GET has supplied a real version.
+    if (serverVersion.current <= 0) return;
 
     if (skipNextSave.current) {
       skipNextSave.current = false;
@@ -970,12 +976,31 @@ export default function App() {
         });
 
         if (response.status === 409) {
-          const conflict = await response.json();
+          // Another browser saved first. Read the authoritative version from
+          // the backend, then retry this user's latest local change once.
+          const latestResponse = await fetch(`${API_URL}/api/state`);
 
-          // Another browser saved first. Refresh the version number, then retry
-          // this user's latest local change once instead of discarding it.
-          serverVersion.current = Number(conflict.version ?? 0);
-          lastServerUpdatedAt.current = conflict.updatedAt || "";
+          if (!latestResponse.ok) {
+            console.warn(
+              "Could not refresh state after version conflict:",
+              latestResponse.status,
+            );
+            return;
+          }
+
+          const latestPayload = await latestResponse.json();
+          const latestVersion = Number(latestPayload.version ?? 0);
+
+          if (latestVersion <= 0) {
+            console.warn(
+              "Backend returned an invalid version after conflict:",
+              latestPayload,
+            );
+            return;
+          }
+
+          serverVersion.current = latestVersion;
+          lastServerUpdatedAt.current = latestPayload.updatedAt || "";
 
           const retryResponse = await fetch(`${API_URL}/api/state`, {
             method: "PUT",
@@ -1053,6 +1078,7 @@ export default function App() {
     announcements,
     audit,
     settings,
+    backendInitialized,
   ]);
 
   useEffect(() => {
