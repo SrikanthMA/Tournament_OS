@@ -2004,7 +2004,7 @@ export default function App() {
             </div>
             <div className="intro-copy">
               <span>JP BADMINTON EVENTS</span>
-              <strong>Juniors Championship 2026</strong>
+              <strong>Juniors Badminton Tournament 2026</strong>
               <small>Bengaluru · August 8–9</small>
             </div>
           </div>
