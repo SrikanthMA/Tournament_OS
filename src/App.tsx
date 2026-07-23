@@ -796,7 +796,7 @@ export default function App() {
   const [announcementPriority, setAnnouncementPriority] =
     useState<Announcement["priority"]>("Normal");
   const [settings, setSettings] = useState({
-    eventName: "Juniors Championship 2026",
+    eventName: "Juniors Badminton Tournament 2026",
     venue: "Bengaluru",
     restMinutes: 15,
     scoringCap: 21,
