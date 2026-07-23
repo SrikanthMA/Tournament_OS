@@ -163,12 +163,18 @@ type CourtMatch = {
   startedAt?: string;
   bracketId?: string;
   bracketMatchId?: string;
+  leagueStageId?: string;
+  leagueGroupId?: string;
+  leagueMatchId?: string;
 };
 
 type ScheduleItem = {
   id: string;
-  bracketId: string;
-  bracketMatchId: string;
+  bracketId?: string;
+  bracketMatchId?: string;
+  leagueStageId?: string;
+  leagueGroupId?: string;
+  leagueMatchId?: string;
   match: string;
   players: string;
   round: string;
@@ -790,7 +796,7 @@ export default function App() {
   const [announcementPriority, setAnnouncementPriority] =
     useState<Announcement["priority"]>("Normal");
   const [settings, setSettings] = useState({
-    eventName: "Juniors Badmintion Tournament 2026",
+    eventName: "Juniors Championship 2026",
     venue: "Bengaluru",
     restMinutes: 15,
     scoringCap: 21,
@@ -1276,31 +1282,70 @@ export default function App() {
       !match ||
       match.status === "Empty" ||
       !match.teamA ||
-      !match.teamB ||
-      !match.bracketId ||
-      !match.bracketMatchId
+      !match.teamB
     )
       return;
+
     if (match.scoreA === match.scoreB) {
       window.alert("The match cannot be finished while the scores are tied.");
       return;
     }
+
     const winner = match.scoreA > match.scoreB ? match.teamA : match.teamB;
     const loser = match.scoreA > match.scoreB ? match.teamB : match.teamA;
+
     if (
       !window.confirm(
         `Finish Court ${court} match?\n\nWinner: ${winner}\nFinal score: ${match.scoreA} - ${match.scoreB}`,
       )
     )
       return;
-    advanceBracketWinner(match.bracketId, match.bracketMatchId, winner);
+
+    if (match.leagueStageId && match.leagueGroupId && match.leagueMatchId) {
+      setLeagueStages((current) =>
+        current.map((stage) =>
+          stage.id !== match.leagueStageId
+            ? stage
+            : {
+                ...stage,
+                groups: stage.groups.map((group) =>
+                  group.id !== match.leagueGroupId
+                    ? group
+                    : {
+                        ...group,
+                        matches: group.matches.map((leagueMatch) =>
+                          leagueMatch.id !== match.leagueMatchId
+                            ? leagueMatch
+                            : {
+                                ...leagueMatch,
+                                winner,
+                                scoreA: match.scoreA,
+                                scoreB: match.scoreB,
+                                status: "Completed" as const,
+                              },
+                        ),
+                      },
+                ),
+              },
+        ),
+      );
+    } else if (match.bracketId && match.bracketMatchId) {
+      advanceBracketWinner(match.bracketId, match.bracketMatchId, winner);
+    } else {
+      window.alert("This court match is missing its tournament reference.");
+      return;
+    }
+
     setScheduleItems((current) =>
       current.map((item) =>
-        item.bracketMatchId === match.bracketMatchId
+        (match.leagueMatchId && item.leagueMatchId === match.leagueMatchId) ||
+        (match.bracketMatchId &&
+          item.bracketMatchId === match.bracketMatchId)
           ? { ...item, status: "Completed" }
           : item,
       ),
     );
+
     logAction(
       `Court ${court} match completed: ${winner} defeated ${loser} ${match.scoreA}-${match.scoreB}. Court is now available.`,
     );
@@ -1314,34 +1359,74 @@ export default function App() {
       !match ||
       match.status === "Empty" ||
       !match.teamA ||
-      !match.teamB ||
-      !match.bracketId ||
-      !match.bracketMatchId
+      !match.teamB
     )
       return;
+
     const choice = window
       .prompt(
         `Walkover on Court ${court}. Type A if ${match.teamA} advances, or B if ${match.teamB} advances.`,
       )
       ?.trim()
       .toUpperCase();
+
     if (choice !== "A" && choice !== "B") return;
+
     const winner = choice === "A" ? match.teamA : match.teamB;
     const absent = choice === "A" ? match.teamB : match.teamA;
+
     if (
       !window.confirm(
         `Confirm walkover?\n\nWinner: ${winner}\nAbsent/withdrawn: ${absent}`,
       )
     )
       return;
-    advanceBracketWinner(match.bracketId, match.bracketMatchId, winner);
+
+    if (match.leagueStageId && match.leagueGroupId && match.leagueMatchId) {
+      setLeagueStages((current) =>
+        current.map((stage) =>
+          stage.id !== match.leagueStageId
+            ? stage
+            : {
+                ...stage,
+                groups: stage.groups.map((group) =>
+                  group.id !== match.leagueGroupId
+                    ? group
+                    : {
+                        ...group,
+                        matches: group.matches.map((leagueMatch) =>
+                          leagueMatch.id !== match.leagueMatchId
+                            ? leagueMatch
+                            : {
+                                ...leagueMatch,
+                                winner,
+                                scoreA: choice === "A" ? 1 : 0,
+                                scoreB: choice === "B" ? 1 : 0,
+                                status: "Completed" as const,
+                              },
+                        ),
+                      },
+                ),
+              },
+        ),
+      );
+    } else if (match.bracketId && match.bracketMatchId) {
+      advanceBracketWinner(match.bracketId, match.bracketMatchId, winner);
+    } else {
+      window.alert("This court match is missing its tournament reference.");
+      return;
+    }
+
     setScheduleItems((current) =>
       current.map((item) =>
-        item.bracketMatchId === match.bracketMatchId
+        (match.leagueMatchId && item.leagueMatchId === match.leagueMatchId) ||
+        (match.bracketMatchId &&
+          item.bracketMatchId === match.bracketMatchId)
           ? { ...item, status: "Walkover" }
           : item,
       ),
     );
+
     logAction(
       `Court ${court} walkover: ${winner} advanced over ${absent}. Court is now available.`,
     );
@@ -1548,6 +1633,87 @@ export default function App() {
     );
   };
 
+  const sendLeagueMatchToCourt = (
+    leagueStageId: string,
+    groupId: string,
+    matchId: string,
+    courtNumber: number,
+  ) => {
+    if (role !== "Super Admin") return;
+
+    const court = courts.find((item) => item.court === courtNumber);
+    if (!court || court.status !== "Empty") {
+      window.alert(`Court ${courtNumber} is currently occupied.`);
+      return;
+    }
+
+    const stage = leagueStages.find((item) => item.id === leagueStageId);
+    const group = stage?.groups.find((item) => item.id === groupId);
+    const leagueMatch = group?.matches.find((item) => item.id === matchId);
+
+    if (
+      !stage ||
+      !group ||
+      !leagueMatch ||
+      leagueMatch.status !== "Pending"
+    )
+      return;
+
+    const alreadyAssigned = courts.some(
+      (item) =>
+        item.status !== "Empty" && item.leagueMatchId === leagueMatch.id,
+    );
+
+    if (alreadyAssigned) {
+      window.alert("This league match is already assigned to a court.");
+      return;
+    }
+
+    const startedAt = formatTime(new Date());
+
+    setCourts((current) =>
+      current.map((item) =>
+        item.court === courtNumber
+          ? {
+              court: courtNumber,
+              status: "Live",
+              eventType: stage.entryType,
+              category: stage.title,
+              round: `${group.name} · Round ${leagueMatch.round + 1}`,
+              teamA: leagueMatch.playerA,
+              teamB: leagueMatch.playerB,
+              scoreA: 0,
+              scoreB: 0,
+              startedAt,
+              leagueStageId: stage.id,
+              leagueGroupId: group.id,
+              leagueMatchId: leagueMatch.id,
+            }
+          : item,
+      ),
+    );
+
+    setScheduleItems((current) => [
+      {
+        id: `schedule-${Date.now()}`,
+        leagueStageId: stage.id,
+        leagueGroupId: group.id,
+        leagueMatchId: leagueMatch.id,
+        match: stage.title,
+        players: `${leagueMatch.playerA} vs ${leagueMatch.playerB}`,
+        round: `${group.name} · Round ${leagueMatch.round + 1}`,
+        court: `Court ${courtNumber}`,
+        time: startedAt,
+        status: "In Progress",
+      },
+      ...current.filter((item) => item.leagueMatchId !== leagueMatch.id),
+    ]);
+
+    logAction(
+      `Sent league match ${leagueMatch.playerA} vs ${leagueMatch.playerB} to Court ${courtNumber}`,
+    );
+  };
+
   const generateTournamentFormat = () => {
     if (role !== "Super Admin" || entryNames.length < 2) return;
     const generated = createLeagueStage(
@@ -1581,57 +1747,6 @@ export default function App() {
     logAction(
       `Generated ${generated.groups.length === 1 ? "one league group" : "two balanced league groups"} for ${generated.title}`,
     );
-  };
-
-  const recordLeagueResult = (
-    groupId: string,
-    matchId: string,
-    winner: string,
-  ) => {
-    if (role !== "Super Admin") return;
-    const score = window.prompt(
-      `Enter final score as A-B for this match. Example: 21-15`,
-      "21-15",
-    );
-    if (!score) return;
-    const parsed = score.match(/^\s*(\d+)\s*[-:]\s*(\d+)\s*$/);
-    if (!parsed) {
-      window.alert("Please enter the score in A-B format, for example 21-15.");
-      return;
-    }
-    const scoreA = Number(parsed[1]);
-    const scoreB = Number(parsed[2]);
-    if (scoreA === scoreB) {
-      window.alert("A completed badminton match cannot end in a tie.");
-      return;
-    }
-    setLeagueStages((current) =>
-      current.map((stage) => {
-        if (stage.id !== currentLeague?.id) return stage;
-        return {
-          ...stage,
-          groups: stage.groups.map((group) =>
-            group.id !== groupId
-              ? group
-              : {
-                  ...group,
-                  matches: group.matches.map((match) =>
-                    match.id !== matchId
-                      ? match
-                      : {
-                          ...match,
-                          winner,
-                          scoreA,
-                          scoreB,
-                          status: "Completed" as const,
-                        },
-                  ),
-                },
-          ),
-        };
-      }),
-    );
-    logAction(`Recorded league result for ${winner}`);
   };
 
   const generateKnockoutFromLeague = () => {
@@ -2738,28 +2853,44 @@ export default function App() {
                                 {match.status === "Pending" && (
                                   <div className="fixture-actions">
                                     <button
-                                      disabled={role !== "Super Admin"}
+                                      disabled={
+                                        role !== "Super Admin" ||
+                                        courts[0].status !== "Empty" ||
+                                        courts.some(
+                                          (court) =>
+                                            court.leagueMatchId === match.id,
+                                        )
+                                      }
                                       onClick={() =>
-                                        recordLeagueResult(
+                                        sendLeagueMatchToCourt(
+                                          currentLeague.id,
                                           group.id,
                                           match.id,
-                                          match.playerA,
+                                          1,
                                         )
                                       }
                                     >
-                                      A wins
+                                      Send to Court 1
                                     </button>
                                     <button
-                                      disabled={role !== "Super Admin"}
+                                      disabled={
+                                        role !== "Super Admin" ||
+                                        courts[1].status !== "Empty" ||
+                                        courts.some(
+                                          (court) =>
+                                            court.leagueMatchId === match.id,
+                                        )
+                                      }
                                       onClick={() =>
-                                        recordLeagueResult(
+                                        sendLeagueMatchToCourt(
+                                          currentLeague.id,
                                           group.id,
                                           match.id,
-                                          match.playerB,
+                                          2,
                                         )
                                       }
                                     >
-                                      B wins
+                                      Send to Court 2
                                     </button>
                                   </div>
                                 )}
