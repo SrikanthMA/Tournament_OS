@@ -33,6 +33,8 @@ import {
   RotateCcw,
   GitBranch,
   Trash2,
+  Menu,
+  X,
 } from "lucide-react";
 
 type Role =
@@ -756,6 +758,7 @@ export default function App() {
     () => (sessionStorage.getItem("jp-staff-role") as Role) || "Viewer",
   );
   const [showLogin, setShowLogin] = useState(false);
+  const [showAccessMenu, setShowAccessMenu] = useState(false);
   const [loginRole, setLoginRole] = useState<StaffRole>("Super Admin");
   const [loginUsername, setLoginUsername] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
@@ -796,7 +799,7 @@ export default function App() {
   const [announcementPriority, setAnnouncementPriority] =
     useState<Announcement["priority"]>("Normal");
   const [settings, setSettings] = useState({
-    eventName: "Juniors Badminton Tournament 2026",
+    eventName: "Juniors Championship 2026",
     venue: "Bengaluru",
     restMinutes: 15,
     scoringCap: 21,
@@ -1175,6 +1178,7 @@ export default function App() {
     setRole(loginRole);
     sessionStorage.setItem("jp-staff-role", loginRole);
     setShowLogin(false);
+    setShowAccessMenu(false);
     setLoginUsername("");
     setLoginPassword("");
     setLoginError("");
@@ -1184,7 +1188,16 @@ export default function App() {
   const logoutStaff = () => {
     setRole("Viewer");
     sessionStorage.removeItem("jp-staff-role");
+    setShowAccessMenu(false);
     if (!PUBLIC_PAGES.includes(page)) setPage("Live");
+  };
+
+  const openRoleLogin = () => {
+    setLoginError("");
+    setLoginUsername("");
+    setLoginPassword("");
+    setShowAccessMenu(false);
+    setShowLogin(true);
   };
 
   const logAction = (action: string) =>
@@ -1894,6 +1907,157 @@ export default function App() {
 
   return (
     <div className="app-shell">
+      <button
+        type="button"
+        aria-label={showAccessMenu ? "Close access menu" : "Open access menu"}
+        aria-expanded={showAccessMenu}
+        onClick={() => setShowAccessMenu((current) => !current)}
+        style={{
+          position: "fixed",
+          top: "max(12px, env(safe-area-inset-top))",
+          right: "12px",
+          zIndex: 10002,
+          width: "48px",
+          height: "48px",
+          borderRadius: "14px",
+          border: "1px solid rgba(255,255,255,0.18)",
+          background: "rgba(15,15,20,0.96)",
+          color: "#ffffff",
+          display: "grid",
+          placeItems: "center",
+          boxShadow: "0 12px 32px rgba(0,0,0,0.4)",
+          cursor: "pointer",
+        }}
+      >
+        {showAccessMenu ? <X size={23} /> : <Menu size={23} />}
+      </button>
+
+      {showAccessMenu && (
+        <>
+          <button
+            type="button"
+            aria-label="Close access menu"
+            onClick={() => setShowAccessMenu(false)}
+            style={{
+              position: "fixed",
+              inset: 0,
+              zIndex: 10000,
+              border: 0,
+              background: "rgba(0,0,0,0.56)",
+              cursor: "default",
+            }}
+          />
+          <aside
+            role="dialog"
+            aria-modal="true"
+            aria-label="Tournament access menu"
+            style={{
+              position: "fixed",
+              top: "max(68px, calc(env(safe-area-inset-top) + 56px))",
+              right: "12px",
+              zIndex: 10001,
+              width: "min(320px, calc(100vw - 24px))",
+              padding: "18px",
+              borderRadius: "18px",
+              border: "1px solid rgba(255,255,255,0.14)",
+              background: "rgba(15,15,20,0.99)",
+              color: "#ffffff",
+              boxShadow: "0 22px 60px rgba(0,0,0,0.55)",
+            }}
+          >
+            <div style={{ display: "flex", gap: "12px", alignItems: "center" }}>
+              <div
+                style={{
+                  width: "42px",
+                  height: "42px",
+                  borderRadius: "12px",
+                  display: "grid",
+                  placeItems: "center",
+                  background: "rgba(239,68,98,0.14)",
+                  color: "#ef4462",
+                }}
+              >
+                <ShieldCheck size={22} />
+              </div>
+              <div>
+                <div
+                  style={{
+                    fontSize: "12px",
+                    opacity: 0.64,
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Current role
+                </div>
+                <strong style={{ display: "block", marginTop: "3px" }}>
+                  {role}
+                </strong>
+              </div>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gap: "10px",
+                marginTop: "18px",
+              }}
+            >
+              <button
+                type="button"
+                onClick={openRoleLogin}
+                style={{
+                  minHeight: "48px",
+                  borderRadius: "12px",
+                  border: "1px solid rgba(239,68,98,0.42)",
+                  background: "#ef4462",
+                  color: "#ffffff",
+                  fontWeight: 800,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "9px",
+                  cursor: "pointer",
+                }}
+              >
+                <LogIn size={18} />
+                {role === "Viewer" ? "Staff login" : "Change role"}
+              </button>
+
+              {role !== "Viewer" && (
+                <button
+                  type="button"
+                  onClick={logoutStaff}
+                  style={{
+                    minHeight: "48px",
+                    borderRadius: "12px",
+                    border: "1px solid rgba(255,255,255,0.16)",
+                    background: "rgba(255,255,255,0.06)",
+                    color: "#ffffff",
+                    fontWeight: 750,
+                    cursor: "pointer",
+                  }}
+                >
+                  Log out to Viewer
+                </button>
+              )}
+            </div>
+
+            <p
+              style={{
+                margin: "14px 2px 0",
+                fontSize: "12px",
+                lineHeight: 1.5,
+                opacity: 0.62,
+              }}
+            >
+              Viewer access is public and read-only. Staff controls require the
+              credentials assigned to the selected role.
+            </p>
+          </aside>
+        </>
+      )}
+
       {showLogin && (
         <div
           className="login-overlay"
@@ -2004,7 +2168,7 @@ export default function App() {
             </div>
             <div className="intro-copy">
               <span>JP BADMINTON EVENTS</span>
-              <strong>Juniors Badminton Tournament 2026</strong>
+              <strong>Juniors Championship 2026</strong>
               <small>Bengaluru · August 8–9</small>
             </div>
           </div>
